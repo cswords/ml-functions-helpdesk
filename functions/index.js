@@ -42,123 +42,141 @@ const SFDC_TOKEN = <YOUR_SFDC_TOKEN>;
  * This write back the priority position in the array to Firebase
  * @params ml : an authenticated ML client
  */
-exports.priority = functions.database.ref('/tickets/{ticketID}').onCreate(event => {
-  const snapshot = event.data;
-  const key = snapshot.key;
-  const ticket = snapshot.val();
+exports.priority = functions.database.ref('/tickets/{ticketID}').onCreate((snapshot, context) => {
 
-  if (ticket.hasOwnProperty("pred_priority")){
-   console.log("Priority has been done")
-   return;
-  }
+    console.log("Snapshot: ", snapshot);
 
-  // Auth
-  google.auth.getApplicationDefault(function(err, authClient) {
-   if (err) {
-     return cb(err);
-   }
+    // const snapshot = event.data;
+    const key = snapshot.key;
+    const ticket = snapshot.val();
 
-   //[START ml_engine_auth]
-   if (authClient.createScopedRequired && authClient.createScopedRequired()) {
-     // https://developers.google.com/identity/protocols/googlescopes#mlv1
-     authClient = authClient.createScoped([
-     'https://www.googleapis.com/auth/cloud-platform'
-     ]);
-   }
+    if (ticket.hasOwnProperty("pred_priority")) {
+        console.log("Priority has been done")
+        return;
+    }
 
-   //Create authenticated ml engine client
-   var ml = google.ml({
-     version: 'v1',
-     auth: authClient
-   });
-   //[END ml_engine_auth]
+    var returnValue = "f**ked";
 
-   // Prediction
-   ml.projects.predict({
-     name: `projects/${MDL_PROJECT_NAME}/models/${PRIORITY_MODEL_NAME}`,
-     resource: {
-       name: `projects/${MDL_PROJECT_NAME}/models/${PRIORITY_MODEL_NAME}`,
-       instances: [
-         `${key},${ticket.seniority},${ticket.experience},${ticket.category},
-         ${ticket.type},${ticket.impact}`
-       ]
-     }
-   }, function (err, result){
-     if (err){
-       console.error('ERROR PRIORITY', err)
-     }
-     if (result.predictions[0].predicted){
-       admin.database().ref(`/tickets/${key}/pred_priority`).set(
-         result.predictions[0].predicted
-       );
-     }
-   });
-  });
+    // Auth
+    auth.getApplicationDefault(function(err, authClient) {
+        if (err) {
+            return cb(err);
+        }
+
+        //[START ml_engine_auth]
+        // https://developers.google.com/identity/protocols/googlescopes#mlv1
+        authClient.scopes = ['https://www.googleapis.com/auth/cloud-platform'];
+
+        //Create authenticated ml engine client
+        var ml = google.ml({
+            version: 'v1',
+            auth: authClient
+        });
+        //[END ml_engine_auth]
+
+        // Prediction
+        returnValue = ml.projects.predict({
+            name: `projects/${MDL_PROJECT_NAME}/models/${PRIORITY_MODEL_NAME}`,
+            resource: {
+                instances: [
+                    `${key},${ticket.seniority},${ticket.experience},${ticket.category},${ticket.type},${ticket.impact}`
+                ]
+            }
+        }, function(err, resp) {
+            if (err) {
+                console.error('ERROR PRIORITY', err)
+            }
+
+            var result = resp.data;
+
+            if (result.error) {
+                console.error("Prediction error: ", result.error);
+            } else {
+                console.log("Predition result: ", result);
+                if (result.predictions && result.predictions.length > 0 && result.predictions[0].predicted) {
+                    admin.database().ref(`/tickets/${key}/pred_priority`).set(
+                        result.predictions[0].predicted
+                    );
+                }
+
+            }
+        });
+    });
+
+    return returnValue;
 });
 
 
 /*
-* RESOLUTION TIME
-* Resolution time prediction using a custom regressive model created
-* calling it through the ML engine API. Because there is no google-cloud nodejs
-* library for this yet, we need to do several steps before we can call it.
-* This returns a float representing the amount of days that it will be open
-* @params ml : an authenticated ML client
-*/
-exports.resolutiontime = functions.database.ref('/tickets/{ticketID}').onCreate(event => {
+ * RESOLUTION TIME
+ * Resolution time prediction using a custom regressive model created
+ * calling it through the ML engine API. Because there is no google-cloud nodejs
+ * library for this yet, we need to do several steps before we can call it.
+ * This returns a float representing the amount of days that it will be open
+ * @params ml : an authenticated ML client
+ */
+exports.resolutiontime = functions.database.ref('/tickets/{ticketID}').onCreate((snapshot, context) => {
 
-  const snapshot = event.data;
-  const key = snapshot.key;
-  const ticket = snapshot.val();
+    console.log("Snapshot: ", snapshot);
 
-  if (ticket.hasOwnProperty("pred_resolution_time")){
-    console.log("Resolution time has been done")
-    return;
-  }
+    // const snapshot = event.data;
+    const key = snapshot.key;
+    const ticket = snapshot.val();
 
-  //[START ml_auth]
-  google.auth.getApplicationDefault(function(err, authClient) {
-    if (err) {
-      return cb(err);
+    if (ticket.hasOwnProperty("pred_resolution_time")) {
+        console.log("Resolution time has been done")
+        return;
     }
 
-    if (authClient.createScopedRequired && authClient.createScopedRequired()) {
-      // Ml Engine does not have its own scope. Needs to use global
-      // https://developers.google.com/identity/protocols/googlescopes#mlv1
-      authClient = authClient.createScoped([
-      'https://www.googleapis.com/auth/cloud-platform'
-      ]);
-    }
+    var returnValue = "f**ked";
 
-    var ml = google.ml({
-      version: 'v1',
-      auth: authClient
-    });
-  //[END ml_auth]
+    //[START ml_auth]
+    auth.getApplicationDefault(function(err, authClient) {
+        if (err) {
+            return cb(err);
+        }
 
-    //[START resolution_prediction]
-    ml.projects.predict({
-      name: `projects/${MDL_PROJECT_NAME}/models/${RESOLUTION_TIME_MODEL_NAME}`,
-      resource: {
-        name: `projects/${MDL_PROJECT_NAME}/models/${RESOLUTION_TIME_MODEL_NAME}`,
-        instances: [
-          `${key},${ticket.seniority},${ticket.experience},${ticket.category},
-          ${ticket.type},${ticket.impact}`
-        ]
-      }
-    },
-    //[END resolution_prediction]
-    function (err, result){
-      if (err){
-        console.error('ERROR RESOLUTION TIME', err)
-      }
-      if (result.predictions[0].predicted){
-        admin.database().ref(`/tickets/${key}/pred_resolution_time`).set(
-          result.predictions[0].predicted
-        );
-      }
+        // Ml Engine does not have its own scope. Needs to use global
+        // https://developers.google.com/identity/protocols/googlescopes#mlv1
+        authClient.scopes = ['https://www.googleapis.com/auth/cloud-platform'];
+
+        var ml = google.ml({
+            version: 'v1',
+            auth: authClient
+        });
+        //[END ml_auth]
+
+        //[START resolution_prediction]
+        returnValue = ml.projects.predict({
+                name: `projects/${MDL_PROJECT_NAME}/models/${RESOLUTION_TIME_MODEL_NAME}`,
+                resource: {
+                    instances: [
+                        `${key},${ticket.seniority},${ticket.experience},${ticket.category},${ticket.type},${ticket.impact}`
+                    ]
+                }
+            },
+            //[END resolution_prediction]
+            function(err, resp) {
+                if (err) {
+                    console.error('ERROR RESOLUTION TIME', err)
+                }
+
+                var result = resp.data;
+
+                if (result.error) {
+                    console.error("Prediction error: ", result.error);
+                } else {
+                    console.log("Predition result: ", result);
+                    if (result.predictions && result.predictions.length > 0 && result.predictions[0].predicted) {
+                        admin.database().ref(`/tickets/${key}/pred_resolution_time`).set(
+                            result.predictions[0].predicted
+                        );
+                    }
+                }
+            });
     });
-  });
+
+    return returnValue;
 });
 
 /*
@@ -167,73 +185,99 @@ exports.resolutiontime = functions.database.ref('/tickets/{ticketID}').onCreate(
  * nodeJS library so the authentication is quite straight forward.
  * It writes back to Firebase the tags.
  */
-exports.sentiment = functions.database.ref('/tickets/{ticketID}').onCreate(event => {
+exports.sentiment = functions.database.ref('/tickets/{ticketID}').onCreate((snapshot, context) => {
 
- const snapshot = event.data;
- const key = snapshot.key;
- const ticket = snapshot.val();
+    console.log("Snapshot: ", snapshot);
 
- // Make sure that after we write, it does not call the function again
- if (!ticket){
-   console.log("No ticket yet")
-   return;
- }
- if (ticket.hasOwnProperty("pred_sentiment")){
-   console.log("Sentiment has been done")
-   return;
- }
+    //const snapshot = event.data;
+    const key = snapshot.key;
+    const ticket = snapshot.val();
 
- //[START nlp_prediction]
- const text = ticket.description;
- const document = language.document({content: text});
+    // Make sure that after we write, it does not call the function again
+    if (!ticket) {
+        console.log("No ticket yet")
+        return;
+    }
+    if (ticket.hasOwnProperty("pred_sentiment")) {
+        console.log("Sentiment has been done")
+        return;
+    }
 
- document.detectSentiment()
-  .then((results) => {
-     const sentiment = results[1].documentSentiment;
-     admin.database().ref(`/tickets/${key}/pred_sentiment`).set(sentiment.score);
-  })
-  .catch((err) => {
-     console.error('ERROR detectSentiment:', err);
-  });
-  //[END nlp_prediction]
+    const client = new language.LanguageServiceClient();
+
+    //[START nlp_prediction]
+    const text = ticket.description;
+    const document = {
+        content: text,
+        type: 'PLAIN_TEXT',
+    };
+
+    return client
+        .analyzeSentiment({ document: document })
+        .then((results) => {
+
+            console.log("Result: ", results);
+            const sentiment = results[0].documentSentiment;
+
+            admin.database().ref(`/tickets/${key}/pred_sentiment`).set(sentiment.score);
+        })
+        .catch((err) => {
+            console.error('ERROR detectSentiment:', err);
+        });
+    //[END nlp_prediction]
 
 });
 
 /*
-* TAGS
-* NLP Enrichment. This is calling directly the nlp API which has a google-cloud
-* nodeJS library so the authentication is quite straight forward.
-* It writes back to Firebase the tags.
-*/
-exports.tags = functions.database.ref('/tickets/{ticketID}').onCreate(event => {
+ * TAGS
+ * NLP Enrichment. This is calling directly the nlp API which has a google-cloud
+ * nodeJS library so the authentication is quite straight forward.
+ * It writes back to Firebase the tags.
+ */
+exports.tags = functions.database.ref('/tickets/{ticketID}').onCreate((snapshot, context) => {
 
-  const snapshot = event.data;
-  const key = snapshot.key;
-  const ticket = snapshot.val();
+    console.log("Snapshot: ", snapshot);
 
-  // Make sure that after we write, it does not call the function again
-  if (ticket.hasOwnProperty("tags")){
-    console.log("Tagging has been done")
-    return;
-  }
+    //const snapshot = event.data;
+    const key = snapshot.key;
+    const ticket = snapshot.val();
 
-  const text = ticket.description;
-  const document = language.document({content: text});
+    // Make sure that after we write, it does not call the function again
+    if (ticket.hasOwnProperty("tags")) {
+        console.log("Tagging has been done")
+        return;
+    }
 
-  document.detectEntities()
-   .then((results) => {
-      const entities = results[0];
-      const writeEntities = []
-      entities.forEach((entity) => {
-        writeEntities.push(entity.name)
-        //admin.database().ref(`/tickets/${key}/tags`).push(entity.name);
-      });
-      // We overwrite the whole thing to prevent duplicates mentioned above
-      admin.database().ref(`/tickets/${key}`).update({'tags':writeEntities});
-   })
-   .catch((err) => {
-      console.error('ERROR detectEntities:', err);
-  });
+    const client = new language.LanguageServiceClient();
+
+    const text = ticket.description;
+    const document = {
+        content: text,
+        type: 'PLAIN_TEXT',
+    };
+
+    return client
+        .analyzeEntities({ document: document })
+        .then((results) => {
+
+            console.log("Result: ", results);
+            const entities = results[0].entities;
+
+            const writeEntities = [];
+            if (entities.length > 0) {
+                entities.forEach((entity) => {
+                    writeEntities.push(entity.name)
+                    //admin.database().ref(`/tickets/${key}/tags`).push(entity.name);
+                });
+            } else {
+                console.log("No entity was returned.");
+            }
+            // We overwrite the whole thing to prevent duplicates mentioned above
+            admin.database().ref(`/tickets/${key}`).update({ 'tags': writeEntities });
+        })
+        .catch((err) => {
+            console.error('ERROR detectEntities:', err);
+        });
 });
 
 /*
